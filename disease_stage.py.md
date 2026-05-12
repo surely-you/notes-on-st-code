@@ -85,10 +85,14 @@ def run_stage_de(adata: ad.AnnData) -> dict[str, pd.DataFrame]:
 This creates a Stacked Bar Chart showing the "recipe" of the tissue at each stage. It uses the deconvolution results to show how the proportions of T-cells, Fibroblasts, and Malignant cells shift over time.
 * *comp = comp.div(comp.sum(axis=1), axis=0)*: Normalization
   * ensures each bar adds up to 100%, because different disease stages might have different total cell densities
+  * It divides the value of each cell type by the total sum of all cell types in that stage.
+  * converts raw numbers into percentages (0 to 1.0). 
 ```
 # ── 2. TME composition across stages ─────────────────────────────────────────
 def plot_tme_composition(adata: ad.AnnData):
+
     """Bar plots of mean cell-type abundance per disease stage."""
+
     # checks adata.obs to see which of your "Cell Types of Interest" actually exist in the data.
     # deconvolution didn't find any "Neural" cells, for example, it simply excludes that column so the code doesn't crash.
     avail_ct = [ct for ct in CELL_TYPES_OF_INTEREST if ct in adata.obs.columns]
@@ -97,14 +101,16 @@ def plot_tme_composition(adata: ad.AnnData):
         return
 
     comp = (
-        adata.obs.groupby("disease_stage")[avail_ct]
+        adata.obs.groupby("disease_stage")[avail_ct] # gathers all spots belonging to "Normal," then all spots belonging to "PanIN," and so on.
         .mean()
-        .reindex(STAGE_ORDER)
+        .reindex(STAGE_ORDER) # ensures bars oare organized in biological order (Normal → PanIN → Primary → Met) rather than alphabetical order.
         .dropna(how="all")
     )
+
     # Normalize rows to sum to 1
     comp = comp.div(comp.sum(axis=1), axis=0)
 
+    # Plotting the Stacked Bar Chart
     fig, ax = plt.subplots(figsize=(10, 5))
     comp.plot(kind="bar", stacked=True, colormap="tab20", ax=ax)
     ax.set_ylabel("Relative cell-type abundance")
