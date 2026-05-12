@@ -1,4 +1,4 @@
-# Annotated script.diease_stage.py
+# Annotations on script.diease_stage.py
 Now that the data is cleaned, deconvolved, and integrated, this script asks the biological questions: What genes change as the cancer progresses? and How does the neighborhood of cells evolve from a normal pancreas to a metastasis?
 ## Load libraries and set up environment 
 ```
@@ -42,6 +42,7 @@ CELL_TYPES_OF_INTEREST = [
 ```
 ## Per-Stage Differential Expression
 This function identifies "Stage-Specific Markers." It compares every spot in one stage (e.g., PanIN) against all other spots in the atlas to find genes that are uniquely "turned on" during that phase of the disease.
+* **Differentially Expressed Genes (DEGs)**: genes whose expression levels are significantly upregulated or downregulated between conditions or groups
 ### Algorithm: Wilcoxon Rank-Sum Test (aka Mann–Whitney U test)
 statistical method for comparing two independent groups when your data doesn’t follow a normal (bell-shaped) distribution. 
 * non-parametric version of the two-sample t-test
@@ -54,29 +55,42 @@ more details from COGS 108 slides (https://github.com/COGS108/Lectures-Sp26/blob
 def run_stage_de(adata: ad.AnnData) -> dict[str, pd.DataFrame]:
     """One-vs-rest DE for each disease stage."""
     results = {}
+
     for stage in STAGE_ORDER:
+        # if a specific stage (like IPMN) isn't actually present in current dataset, it skips it to avoid errors.
         if stage not in adata.obs["disease_stage"].values:
             continue
+
+        # creates a temporary column in metadata where every spot is labeled either "True" (it is the stage we are currently looking at) or "False" (it is any other stage).
         adata.obs["is_stage"] = (adata.obs["disease_stage"] == stage).astype(str)
+
+        # U test
         sc.tl.rank_genes_groups(
-            adata, groupby="is_stage", groups=["True"],
-            reference="False", method="wilcoxon", use_raw=True,
+            adata,
+            groupby="is_stage", groups=["True"], reference="False",    # compares the "True" group against the "False" (reference) group.
+            method="wilcoxon", use_raw=True,                           # uses the original, unlogged counts for the math, which is statistically more accurate for identifying DEGs.
         )
+
+        # Extracting and Saving Results
         df = sc.get.rank_genes_groups_df(adata, group="True")
         df["stage"] = stage
         results[stage] = df
         df.to_csv(f"{OUTPUT_DIR}/DE_{stage}.csv", index=False)
+
+        # Reporting Significance
         print(f"  {stage}: {(df['pvals_adj'] < 0.05).sum()} sig. DEGs")
     return results
 ```
 ## TME Composition Across Stages
-This creates a Stacked Bar Chart showing the "recipe" of the tissue at each stage. It uses the deconvolution results from Script 02 to show how the proportions of T-cells, Fibroblasts, and Malignant cells shift over time.
+This creates a Stacked Bar Chart showing the "recipe" of the tissue at each stage. It uses the deconvolution results to show how the proportions of T-cells, Fibroblasts, and Malignant cells shift over time.
 * *comp = comp.div(comp.sum(axis=1), axis=0)*: Normalization
   * ensures each bar adds up to 100%, because different disease stages might have different total cell densities
 ```
 # ── 2. TME composition across stages ─────────────────────────────────────────
 def plot_tme_composition(adata: ad.AnnData):
     """Bar plots of mean cell-type abundance per disease stage."""
+    # checks adata.obs to see which of your "Cell Types of Interest" actually exist in the data.
+    # deconvolution didn't find any "Neural" cells, for example, it simply excludes that column so the code doesn't crash.
     avail_ct = [ct for ct in CELL_TYPES_OF_INTEREST if ct in adata.obs.columns]
     if not avail_ct:
         print("  No deconvolution columns found — skipping composition plot")
