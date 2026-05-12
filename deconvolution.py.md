@@ -1,9 +1,14 @@
+# Qs 4 Reena
+```
+SC_REF_PATH  = "data/reference/pdac_scrna_reference.h5ad
+```
+what's the reference?
 # Spatial Deconvolution with Cell2location
 This workflow describes the process of cell-type deconvolution for Spatial Transcriptomics. Because a single Visium spot (55µm) usually contains multiple cells (typically 1–20), we cannot assume one spot equals one cell. This script uses Cell2location, a Bayesian model, to integrate single-cell RNA-seq (scRNA-seq) "signatures" into spatial data to estimate exactly which cell types are present in each spot.
 ## Background Info: Cell2location
 ### Model Logic: How Bayesian deconvolution works.
 "Bayesian" means the model uses prior beliefs to stay grounded in biological reality.Instead of just guessing any number, we give the model "Priors":
-* **Cell Density Prior** (*N_CELLS_PER_LOC*): "We expect about 8 to 15 cells per spot."
+* **Cell Density Prior** (*N_CELLS_PER_LOC*): expected number of cells per spot
   * acts as a regularizer: Without this, the model might try to explain a very high signal by jamming 100 cells into one spot, which is biologically impossible.
   * High Density (e.g., Lymph node): Set to 15–20.
   * Low Density (e.g., Fatty tissue): Set to 2–5.
@@ -15,7 +20,7 @@ This workflow describes the process of cell-type deconvolution for Spatial Trans
 * **Gene Sensitivity**: "Some genes are captured more easily than others."
 
 ### Posterior Estimation
-The model runs hundreds of iterations (Epochs). In each iteration, it tries to solve the puzzle:
+The model runs hundreds of iterations (# of iterations = *EPOCHS_REF*). In each iteration, it tries to solve the puzzle:
 * Guess: It guesses the number of each cell type in a spot.
 * Simulate: It multiplies those guesses by the scRNA-seq signatures to see if the result matches the real spatial data.
 * Adjust: If the guess was too high for a specific gene, it lowers the estimate for the cell types that express that gene.
@@ -55,18 +60,20 @@ FIGURE_DIR   = "figures/deconvolution"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(FIGURE_DIR, exist_ok=True)
 
-N_CELLS_PER_LOC = 8              # expected avg cells per Visium spot
-DETECTION_ALPHA = 200            # cell2location hyperparameter
-EPOCHS_SPATIAL  = 30000
-
 SPATIAL_SAMPLES = [
     "GSE254829", "GSE233293", "GSE327056",
     "GSE274103", "GSE310353", "Syn61831984",
     "GSE278694", "GSE272362", "GSE274557",
 ]
 ```
-## 2. Reference Mapping: Establishing gene expression signatures for cell types.
+## Reference Mapping: Establishing gene expression signatures for cell types.
 Before looking at the tissue, we must "teach" the model our cell types. This requires high-quality scRNA-seq data where every cell is already labeled.
+This code segment is the "Learning Phase" (Reference Signature Estimation) of the cell2location pipeline. It uses Negative Binomial (NB) regression to transform a raw scRNA-seq atlas into a clean dictionary of cell-type signatures
+* **Negative Binomial distribution (NBD)**: probability distribution used to model count data
+  * biological data is "noisy." In real tissue samples, we see that the variance is often much higher than the mean ($Var > Mean$). This is called **overdispersion**. NBD adds a second parameter to account for this extra "noise."
+  * **The "Zero" Problem**: Count data is strictly non-negative. You can't have $-5$ counts of a gene. NB handles the "long tail" of low-expression genes (where many spots have 0 counts) much better than a standard Bell Curve (Normal distribution).
+* *CELL_TYPE_COL = "cell_type"*: a string that must match a column name in the sc_ref.obs (the metadata table of your scRNA-seq atlas).
+  * Why it matters: During the Reference Training phase, cell2location needs to calculate an average "expression fingerprint" for every category of cell. If this variable is wrong, the model won't know which cells are "T-cells" vs. "Ductal cells," and it won't be able to build the dictionary it needs to decode the spatial spots.
 ```
 
 CELL_TYPE_COL   = "cell_type"    # The 'ground truth' labels in your scRNA-seq data
@@ -87,21 +94,40 @@ def train_reference_model(sc_ref: ad.AnnData):
     )
 
 # Train the model to learn per-cell-type signatures
-    ref_model = cell2location.models.RegressionModel(sc_ref)
+    ref_model = cell2location.models.RegressionModel(sc_ref) # initializes a Bayesian model that assumes gene expression follows a NBD
     ref_model.train(max_epochs=EPOCHS_REF)
 
     # Export posterior — inf_aver is the per-cell-type expression signature
-    sc_ref = ref_model.export_posterior(sc_ref, sample_kwargs={"num_samples": 1000})
-    inf_aver = sc_ref.varm["means_per_cluster_mu_fg"][
+
+    
+    sc_ref = ref_model.export_posterior(sc_ref, sample_kwargs={"num_samples": 1000}) # takes 1,000 random samples from that distribution to calculate the mean (average) expression. This ensures the signature is statistically robust and not skewed by a few outlier cells.
+
+    # extracts the results from the hidden layers of the AnnData object
+    # Result: You end up with a clean DataFrame (inf_aver) where every column is a cell type "fingerprint."
+    inf_aver = sc_ref.varm["means_per_cluster_mu_fg"][ #table where rows are genes and columns are the Inferred Average ($\mu$) expression per cell type
         [f"means_per_cluster_mu_fg_{ct}" for ct in sc_ref.uns["mod"]["factor_names"]]
     ].copy()
     inf_aver.columns = sc_ref.uns["mod"]["factor_names"]
 
+    #saving the model
     ref_model.save("models/reference_model", overwrite=True)
     return inf_aver
 
 ```
+## Deconvonlution
+This code segment is the "Solving Phase." It takes the "Dictionary" you built in the previous step and applies it to your real spatial tissue samples to determine exactly where each cell type is located.
+* *EPOCHS_SPATIAL = 30000*: defines how many times the model will iterate over the spatial data to refine its estimates.
+  * Cell2location uses Variational Inference (a type of Bayesian machine learning). Unlike simple models that converge quickly, Bayesian models start with a "fuzzy" guess and slowly sharpen it.
+  * The "Burn-in" Process:
+     * **Epochs 1–5,000**: The model is mostly figuring out the background noise and the "big" cell types (e.g., "This spot is definitely mostly Tumor").
+     * **Epochs 5,000–20,000**: The model begins to distinguish between very similar cell types (e.g., "Is this an Inflammatory Fibroblast or a Myofibroblast?").
+     * **Epochs 20,000–30,000**: The model fine-tunes the absolute abundance. It ensures that the predicted counts (e.g., 2.4 cells) are mathematically stable and that the "loss function" (the error rate) has flattened out.
+```
 # ── Step 2: Deconvolve each spatial sample ───────────────────────────────────
+N_CELLS_PER_LOC = 8              # expected avg cells per Visium spot
+DETECTION_ALPHA = 200            # cell2location hyperparameter
+EPOCHS_SPATIAL  = 30000
+
 def deconvolve_sample(adata: ad.AnnData, inf_aver: pd.DataFrame, sid: str) -> ad.AnnData:
     """Run cell2location spatial mapping for one sample."""
     # Keep only genes shared between reference and spatial data
@@ -112,10 +138,11 @@ def deconvolve_sample(adata: ad.AnnData, inf_aver: pd.DataFrame, sid: str) -> ad
     cell2location.models.Cell2location.setup_anndata(adata, batch_key=None)
     model = cell2location.models.Cell2location(
         adata,
-        cell_state_df=inf_av,
-        N_cells_per_location=N_CELLS_PER_LOC,
-        detection_alpha=DETECTION_ALPHA,
+        cell_state_df=inf_av,                   # You are handing the model the "Dictionary" (signatures) you just trained.
+        N_cells_per_location=N_CELLS_PER_LOC,   # prevents the model from mathematically over-fitting (e.g., trying to put 50 cells in one tiny spot).
+        detection_alpha=DETECTION_ALPHA,        # sets the confidence level for technical noise
     )
+
     model.train(
         max_epochs=EPOCHS_SPATIAL,
         batch_size=None,
@@ -123,11 +150,12 @@ def deconvolve_sample(adata: ad.AnnData, inf_aver: pd.DataFrame, sid: str) -> ad
         use_gpu=True,
     )
 
+   # Extracting the Results: takes the estimated cell counts and adds them directly to your sample metadata (adata.obs)
+   # Result: If your dictionary had "T-cell" and "Fibroblast," your adata.obs now has columns named "T-cell" and "Fibroblast." Each row (spot) now has a number, like 2.4 or 0.1, representing how many of that cell type are in that spot.
     adata = model.export_posterior(
         adata,
         sample_kwargs={"num_samples": 1000, "batch_size": model.adata.n_obs},
     )
-
     # Summarise: mean cell abundance per spot
     adata.obs[adata.uns["mod"]["factor_names"]] = \
         adata.obsm["means_cell_abundance_w_sf"]
@@ -142,8 +170,9 @@ def deconvolve_sample(adata: ad.AnnData, inf_aver: pd.DataFrame, sid: str) -> ad
 
     model.save(f"models/{sid}_spatial_model", overwrite=True)
     return adata
-
-
+```
+## Main function that calls all aforementioned functions
+```
 # ── Main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("Loading scRNA-seq reference...")
@@ -163,3 +192,4 @@ if __name__ == "__main__":
         adata = deconvolve_sample(adata, inf_aver, sid)
         adata.write_h5ad(f"{OUTPUT_DIR}/{sid}_deconvolved.h5ad")
         print(f"  Saved → {OUTPUT_DIR}/{sid}_deconvolved.h5ad")
+```
