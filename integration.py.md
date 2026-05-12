@@ -1,3 +1,8 @@
+#title
+This script represents the final "assembly" of your data. While the previous scripts handled individual samples and deconvolution, 03_integration.py merges all samples into a single Unified PDAC Atlas.
+
+The goal here is to remove batch effects—technical differences caused by different patients, labs, or sequencing runs—so that biological differences (like Normal vs. Cancer) can be studied clearly.
+
 ```
 """
 03_integration.py
