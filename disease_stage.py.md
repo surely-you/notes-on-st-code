@@ -1,3 +1,6 @@
+# Annotated script.diease_stage.py
+Now that the data is cleaned, deconvolved, and integrated, this script asks the biological questions: What genes change as the cancer progresses? and How does the neighborhood of cells evolve from a normal pancreas to a metastasis?
+## Load libraries and set up environment 
 ```
 """
 04_disease_stage_analysis.py
@@ -36,8 +39,17 @@ CELL_TYPES_OF_INTEREST = [
     "Stellate/CAF", "Endothelial", "Macrophage",
     "T cell", "B cell", "Neutrophil", "Neural",
 ]
+```
+## Per-Stage Differential Expression
+This function identifies "Stage-Specific Markers." It compares every spot in one stage (e.g., PanIN) against all other spots in the atlas to find genes that are uniquely "turned on" during that phase of the disease.
+### Algorithm: Wilcoxon Rank-Sum Test (aka Mann–Whitney U test)
+statistical method for comparing two independent groups when your data doesn’t follow a normal (bell-shaped) distribution. 
+* non-parametric version of the two-sample t-test
+* it works by ranking all observations from both groups together and then checking whether one group’s ranks tend to be higher than the other’s
+* source: https://scienceinsights.org/what-is-the-wilcoxon-rank-sum-test-and-when-to-use-it/ 
 
-
+more details from COGS 108 slides (https://github.com/COGS108/Lectures-Sp26/blob/main/13-Nonparametric-Inference.pdf)
+```
 # ── 1. Per-stage differential expression ─────────────────────────────────────
 def run_stage_de(adata: ad.AnnData) -> dict[str, pd.DataFrame]:
     """One-vs-rest DE for each disease stage."""
@@ -56,8 +68,12 @@ def run_stage_de(adata: ad.AnnData) -> dict[str, pd.DataFrame]:
         df.to_csv(f"{OUTPUT_DIR}/DE_{stage}.csv", index=False)
         print(f"  {stage}: {(df['pvals_adj'] < 0.05).sum()} sig. DEGs")
     return results
-
-
+```
+## TME Composition Across Stages
+This creates a Stacked Bar Chart showing the "recipe" of the tissue at each stage. It uses the deconvolution results from Script 02 to show how the proportions of T-cells, Fibroblasts, and Malignant cells shift over time.
+* *comp = comp.div(comp.sum(axis=1), axis=0)*: Normalization
+  * ensures each bar adds up to 100%, because different disease stages might have different total cell densities
+```
 # ── 2. TME composition across stages ─────────────────────────────────────────
 def plot_tme_composition(adata: ad.AnnData):
     """Bar plots of mean cell-type abundance per disease stage."""
@@ -85,8 +101,15 @@ def plot_tme_composition(adata: ad.AnnData):
     plt.close()
     comp.to_csv(f"{OUTPUT_DIR}/tme_composition_by_stage.csv")
     print("  TME composition plot saved.")
-
-
+```
+## NMF Gene Programs
+Non-negative Matrix Factorization (NMF) to find "Gene Programs" (groups of genes that always work together), rather than looking at single genes.
+### Non-negative Matrix Factorization (NMF)
+NMF is a "Parts-based Representation" algorithm. Imagine a spot is a "Sentence." NMF finds the "Words" (Gene Programs) that make up that sentence.
+* **Matrix H:** Tells you which genes belong to which program (e.g., Program 1 = Inflammatory Genes).
+* **Matrix W**: Tells you which spots are "using" that program.
+* **Why it's "Non-negative"**: In biology, you can't have "negative" expression. NMF enforces that all values must be $\geq 0$, which results in "additive" programs that are much easier for biologists to interpret than the abstract components found in PCA.
+```
 # ── 3. NMF gene programs ──────────────────────────────────────────────────────
 def extract_gene_programs(adata: ad.AnnData, n_programs: int = 10):
     """
@@ -128,8 +151,10 @@ def extract_gene_programs(adata: ad.AnnData, n_programs: int = 10):
     plt.close()
     print(f"  NMF programs saved.")
     return adata
-
-
+```
+## Top DEG Heatmap
+This creates a visual "Master Summary" of the atlas. It picks the top 15 most significant genes from every stage and plots them in a grid.
+```
 # ── 4. Top DEG heatmap across stages ─────────────────────────────────────────
 def plot_top_deg_heatmap(adata: ad.AnnData, de_results: dict, n_top: int = 15):
     top_genes = []
@@ -145,8 +170,10 @@ def plot_top_deg_heatmap(adata: ad.AnnData, de_results: dict, n_top: int = 15):
         cmap="RdBu_r", save="_stage_deg_heatmap.png",
     )
     print("  DEG heatmap saved.")
-
-
+```
+## Main
+calls the aforementioned functions and ties everything together
+```
 # ── Main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("Loading integrated atlas...")
