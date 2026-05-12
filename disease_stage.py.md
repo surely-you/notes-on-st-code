@@ -123,13 +123,18 @@ def plot_tme_composition(adata: ad.AnnData):
     print("  TME composition plot saved.")
 ```
 ## NMF Gene Programs
-Non-negative Matrix Factorization (NMF) to find "Gene Programs" (groups of genes that always work together), rather than looking at single genes.
+Non-negative Matrix Factorization (NMF) to find "Gene Programs" (groups of genes that are co expressed), rather than looking at single genes.
 ### Non-negative Matrix Factorization (NMF)
 **NMF:** technique used to break down large dataset into smaller meaningful parts while ensuring that all values remain non-negative. This helps in extracting useful features from data and making it easier to analyze and process it.
 * decomposes a data matrix A into two smaller matrices W and H using an iterative optimization process that minimizes reconstruction error
-* **Matrix H:** Tells you which genes belong to which program (e.g., Program 1 = Inflammatory Genes).
-* **Matrix W**: Tells you which spots are "using" that program.
+  * W: Feature matrix (basis components)
+  * H: Coefficient matrix (weights associated with W)
 * source: https://www.geeksforgeeks.org/machine-learning/non-negative-matrix-factorization/
+
+The application ($V \approx W \times H$) in our project:
+* $V$ (The Input): original data (Spots $\times$ Genes).
+* $W$ (The Spatial Map): Tells you where each program is active (Spots $\times$ Programs).
+* $H$ (The Gene Dictionary): Tells you which genes belong to each program (Programs $\times$ Genes). For example, if Program 1 has high loadings for COL1A1 and FAP, it’s a Fibroblast/Stroma program.
 ```
 # ── 3. NMF gene programs ──────────────────────────────────────────────────────
 def extract_gene_programs(adata: ad.AnnData, n_programs: int = 10):
@@ -137,31 +142,37 @@ def extract_gene_programs(adata: ad.AnnData, n_programs: int = 10):
     Run NMF on the log-normalized expression matrix (HVGs only) to extract
     latent gene programs. Saves top-50 genes per program.
     """
+
+    # Filtering: NMF is computationally expensive. Instead of using all 20,000+ genes, the script only uses the Highly Variable Genes (HVGs) identified earlier.
     hvg_mask = adata.var.get("highly_variable", pd.Series(True, index=adata.var_names))
     X = adata[:, hvg_mask].X
     if hasattr(X, "toarray"):
         X = X.toarray()
+    # ensures there are absolutely no negative values in your matrix (set all - values to 0)
     X = np.clip(X, 0, None)   # NMF requires non-negative values
 
+    # Factorization, see above description for W and H
     print(f"  Running NMF with {n_programs} components...")
     model = NMF(n_components=n_programs, init="nndsvda", random_state=42, max_iter=500)
     W = model.fit_transform(X)   # spots × programs
     H = model.components_        # programs × genes
 
+    # Ranking and Saving the "Drivers"
+    # looks at the H matrix, finds the top 50 genes for each program, and saves them to a CSV.
     gene_names = adata.var_names[hvg_mask]
     program_records = []
     for i, h in enumerate(H):
         top_idx  = np.argsort(h)[::-1][:50]
         top_genes = gene_names[top_idx].tolist()
         program_records.append({"program": f"P{i+1}", "top_genes": ", ".join(top_genes)})
-
     pd.DataFrame(program_records).to_csv(f"{OUTPUT_DIR}/nmf_programs.csv", index=False)
 
-    # Store program scores on obs
+    # calculates the average activity score for each of the 10 programs across disease stages (Normal → PanIN → Primary → Met).
     for i in range(n_programs):
         adata.obs[f"NMF_P{i+1}"] = W[:, i]
 
     # Heatmap: mean program score per stage
+    # Goal: To find programs that "ramp up" as the disease progresses. A "Malignancy Program" should be dark (low) in Normal tissue and bright yellow (high) in Metastasis.
     prog_cols = [f"NMF_P{i+1}" for i in range(n_programs)]
     prog_stage = adata.obs.groupby("disease_stage")[prog_cols].mean().reindex(STAGE_ORDER).dropna()
     fig, ax = plt.subplots(figsize=(12, 4))
