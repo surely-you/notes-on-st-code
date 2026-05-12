@@ -1,12 +1,165 @@
 # Spatial Deconvolution with Cell2location
 This workflow describes the process of cell-type deconvolution for Spatial Transcriptomics. Because a single Visium spot (55µm) usually contains multiple cells (typically 1–20), we cannot assume one spot equals one cell. This script uses Cell2location, a Bayesian model, to integrate single-cell RNA-seq (scRNA-seq) "signatures" into spatial data to estimate exactly which cell types are present in each spot.
-## Background Info
-Model Logic: How Bayesian deconvolution works.
-Cell2location works in two distinct phases:
+## Background Info: Cell2location
+### Model Logic: How Bayesian deconvolution works.
+"Bayesian" means the model uses prior beliefs to stay grounded in biological reality.Instead of just guessing any number, we give the model "Priors":
+* **Cell Density Prior** (*N_CELLS_PER_LOC*): "We expect about 8 to 15 cells per spot."
+  * acts as a regularizer: Without this, the model might try to explain a very high signal by jamming 100 cells into one spot, which is biologically impossible.
+  * High Density (e.g., Lymph node): Set to 15–20.
+  * Low Density (e.g., Fatty tissue): Set to 2–5.
+  * Standard (e.g., PDAC/Tumor): Set to 8–12.
+* **Technical Noise Prior** (*DETECTION_ALPHA*): controls how much the model accounts for technical variation in gene detection.
+  * represents the "sensitivity" of the spatial technology compared to the single-cell reference.
+  * Lower values (e.g., 20): The model is "relaxed." It assumes there is a lot of technical noise and will be more flexible in how it maps cells.
+  * Higher values (e.g., 200): The model is "strict." It assumes the gene detection is quite consistent. This is generally recommended for modern Visium datasets to prevent the model from over-fitting to noise.
+* **Gene Sensitivity**: "Some genes are captured more easily than others."
+
+### Posterior Estimation
+The model runs hundreds of iterations (Epochs). In each iteration, it tries to solve the puzzle:
+* Guess: It guesses the number of each cell type in a spot.
+* Simulate: It multiplies those guesses by the scRNA-seq signatures to see if the result matches the real spatial data.
+* Adjust: If the guess was too high for a specific gene, it lowers the estimate for the cell types that express that gene.
+* Final Result (Posterior): After ~30,000 rounds, the model provides a probability distribution of cell abundance. It doesn't just say "there are 5 T-cells"; it says "based on the evidence and our priors, the most likely number of T-cells is 5.2."
+
+
+### Cell2location 
+works in two distinct phases:
 * **The Reference Model**: It looks at a single-cell atlas and learns what a "T-cell," "Fibroblast," or "Tumor Cell" looks like in terms of average gene expression ($mu$).
 * **The Spatial Model**: It looks at the mixed signal in a Visium spot and calculates the combination of those signatures that best explains the observed counts, accounting for technical noise ($\alpha$).
 
 ## Steps
-1. Reference Mapping: Establishing gene expression signatures for cell types.
-2. Spatial Mapping: Projecting signatures onto tissue spots.
-3. Visualization: Interpreting cell abundance maps.
+1. Setting things up
+2. Reference Mapping: Establishing gene expression signatures for cell types.
+3. Spatial Mapping: Projecting signatures onto tissue spots.
+4. Visualization: Interpreting cell abundance maps.
+
+## Setting things up
+new libraries: 
+* **cell2location**:
+* **filter_genes**:
+```
+import scanpy as sc
+import anndata as ad
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import cell2location
+from cell2location.utils.filtering import filter_genes
+import os
+
+# ── Config ───────────────────────────────────────────────────────────────────
+SC_REF_PATH  = "data/reference/pdac_scrna_reference.h5ad"  # scRNA-seq reference
+SPATIAL_DIR  = "data/processed"
+OUTPUT_DIR   = "data/deconvolved"
+FIGURE_DIR   = "figures/deconvolution"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(FIGURE_DIR, exist_ok=True)
+
+N_CELLS_PER_LOC = 8              # expected avg cells per Visium spot
+DETECTION_ALPHA = 200            # cell2location hyperparameter
+EPOCHS_SPATIAL  = 30000
+
+SPATIAL_SAMPLES = [
+    "GSE254829", "GSE233293", "GSE327056",
+    "GSE274103", "GSE310353", "Syn61831984",
+    "GSE278694", "GSE272362", "GSE274557",
+]
+```
+## 2. Reference Mapping: Establishing gene expression signatures for cell types.
+Before looking at the tissue, we must "teach" the model our cell types. This requires high-quality scRNA-seq data where every cell is already labeled.
+```
+
+CELL_TYPE_COL   = "cell_type"    # The 'ground truth' labels in your scRNA-seq data
+EPOCHS_REF      = 250            # Number of training iterations for the reference
+
+def train_reference_model(sc_ref: ad.AnnData):
+
+    # Filter genes to reduce noise (removing genes expressed in too few cells)
+    selected = filter_genes(sc_ref, cell_count_cutoff=5, cell_percentage_cutoff2=0.03,
+                            nonz_mean_cutoff=1.12)
+    sc_ref = sc_ref[:, selected].copy()
+
+# Setup the model to account for 'batch effects' (different patients/samples)
+    cell2location.models.RegressionModel.setup_anndata(
+        sc_ref,
+        batch_key="sample_id",
+        labels_key=CELL_TYPE_COL,
+    )
+
+# Train the model to learn per-cell-type signatures
+    ref_model = cell2location.models.RegressionModel(sc_ref)
+    ref_model.train(max_epochs=EPOCHS_REF)
+
+    # Export posterior — inf_aver is the per-cell-type expression signature
+    sc_ref = ref_model.export_posterior(sc_ref, sample_kwargs={"num_samples": 1000})
+    inf_aver = sc_ref.varm["means_per_cluster_mu_fg"][
+        [f"means_per_cluster_mu_fg_{ct}" for ct in sc_ref.uns["mod"]["factor_names"]]
+    ].copy()
+    inf_aver.columns = sc_ref.uns["mod"]["factor_names"]
+
+    ref_model.save("models/reference_model", overwrite=True)
+    return inf_aver
+
+```
+# ── Step 2: Deconvolve each spatial sample ───────────────────────────────────
+def deconvolve_sample(adata: ad.AnnData, inf_aver: pd.DataFrame, sid: str) -> ad.AnnData:
+    """Run cell2location spatial mapping for one sample."""
+    # Keep only genes shared between reference and spatial data
+    shared = inf_aver.index.intersection(adata.var_names)
+    adata  = adata[:, shared].copy()
+    inf_av = inf_aver.loc[shared]
+
+    cell2location.models.Cell2location.setup_anndata(adata, batch_key=None)
+    model = cell2location.models.Cell2location(
+        adata,
+        cell_state_df=inf_av,
+        N_cells_per_location=N_CELLS_PER_LOC,
+        detection_alpha=DETECTION_ALPHA,
+    )
+    model.train(
+        max_epochs=EPOCHS_SPATIAL,
+        batch_size=None,
+        train_size=1,
+        use_gpu=True,
+    )
+
+    adata = model.export_posterior(
+        adata,
+        sample_kwargs={"num_samples": 1000, "batch_size": model.adata.n_obs},
+    )
+
+    # Summarise: mean cell abundance per spot
+    adata.obs[adata.uns["mod"]["factor_names"]] = \
+        adata.obsm["means_cell_abundance_w_sf"]
+
+    # Plot spatial cell-type abundance maps
+    ct_cols = adata.uns["mod"]["factor_names"]
+    sc.pl.spatial(
+        adata, color=ct_cols[:min(8, len(ct_cols))],
+        ncols=4, size=1.3, img_key="hires",
+        save=f"_{sid}_celltype_abundance.png",
+    )
+
+    model.save(f"models/{sid}_spatial_model", overwrite=True)
+    return adata
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    print("Loading scRNA-seq reference...")
+    sc_ref = sc.read_h5ad(SC_REF_PATH)
+
+    print("Training reference model...")
+    inf_aver = train_reference_model(sc_ref)
+    inf_aver.to_csv(f"{OUTPUT_DIR}/inf_aver_signatures.csv")
+
+    for sid in SPATIAL_SAMPLES:
+        path = f"data/processed/{sid}_processed.h5ad"
+        if not os.path.exists(path):
+            print(f"  Skipping {sid} — processed file not found")
+            continue
+        print(f"\nDeconvolving {sid}...")
+        adata = sc.read_h5ad(path)
+        adata = deconvolve_sample(adata, inf_aver, sid)
+        adata.write_h5ad(f"{OUTPUT_DIR}/{sid}_deconvolved.h5ad")
+        print(f"  Saved → {OUTPUT_DIR}/{sid}_deconvolved.h5ad")
