@@ -103,19 +103,24 @@ def load_all_samples(deconv_dir: str) -> ad.AnnData:
 ```
 ## Sanity Check and Reset
 normalize and prepares the merged dataset for Integration
+* *sc.pp.normalize_total(adata, target_sum=1e4)*: One Visium sample might have more total reads than another simply because the sequencer ran longer, not because the biology is different.
+  * Adjusts each spot so that all counts add up to 10,000. This makes the "volume" of expression comparable across all 30,000+ spots in your atlas.
+  * *log1p*: $log(1+x)$ transformation.
+* *sc.pp.highly_variable_genes*: Instead of just picking the 3,000 most variable genes across the entire merged dataset, it does so per sample.
+  * Result: You get a list of 3,000 genes that truly represent the biological differences in your PDAC progression (e.g., genes that distinguish a tumor cell from a fibroblast, regardless of which patient they came from).
+  * *batch_key="sample_id"*: This tells the model to find genes that are variable within each sample, and then select the ones that are consistently variable across all samples.
 ```
 # ── Re-normalize after concatenation ─────────────────────────────────────────
 def renormalize(adata: ad.AnnData) -> ad.AnnData:
     # Preserving the Raw "Counts"
     if "counts" not in adata.layers:
         adata.layers["counts"] = adata.X.copy()
-    # One Visium sample might have more total reads than another simply because the sequencer ran longer, not because the biology is different.
-    # normalize_total: Adjusts each spot so that all counts add up to 10,000. This makes the "volume" of expression comparable across all 30,000+ spots in your atlas.
+
+    # Global Normalization & Scaling
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
 
-    # Instead of just picking the 3,000 most variable genes across the entire merged dataset, it does so per sample.
-    # Result: You get a list of 3,000 genes that truly represent the biological differences in your PDAC progression (e.g., genes that distinguish a tumor cell from a fibroblast, regardless of which patient they came from).
+    # Batch-Aware Feature Selection (HVGs)
     sc.pp.highly_variable_genes(
         adata, n_top_genes=3000, flavor="seurat_v3",
         layer="counts", batch_key="sample_id" # tells the model to find genes that are variable within each sample, and then select the ones that are consistently variable across all samples.
@@ -123,14 +128,24 @@ def renormalize(adata: ad.AnnData) -> ad.AnnData:
     return adata
 ```
 ## Merging the datasets using harmony
+* *sc.tl.pca(adata, n_comps=50, use_highly_variable=True)* : Compresses the 3,000 Highly Variable Genes into 50 "Principal Components"
+  * Harmony doesn't work on raw genes; it works on the mathematical summaries (PCs) of those genes. This removes noise and speeds up the calculation.
 ```
 # ── Integration: Harmony ──────────────────────────────────────────────────────
 def integrate_harmony(adata: ad.AnnData) -> ad.AnnData:
+
     import harmonypy as hm
+    # z score standardization (mean = 0, variance = 1)
     sc.pp.scale(adata, max_value=10)
+
+    # Compresses the 3,000 Highly Variable Genes into 50 "Principal Components"
     sc.tl.pca(adata, n_comps=50, use_highly_variable=True)
+
+    # runs harmony
     ho = hm.run_harmony(adata.obsm["X_pca"], adata.obs, ["sample_id"])
     adata.obsm["X_integrated"] = ho.Z_corr.T
+
+    # Neighbors, UMAP, and Clustering
     sc.pp.neighbors(adata, use_rep="X_integrated", n_neighbors=15)
     sc.tl.umap(adata)
     sc.tl.leiden(adata, resolution=0.5)
@@ -161,8 +176,9 @@ def integrate_scvi(adata: ad.AnnData) -> ad.AnnData:
     sc.tl.umap(adata)
     sc.tl.leiden(adata, resolution=0.5)
     return adata
-
-
+```
+## annotate clusters (consider SingleR?)
+```
 # ── Cluster annotation helpers ────────────────────────────────────────────────
 MARKER_GENES = {
     "Ductal (malignant)" : ["KRT19", "EPCAM", "KRT8", "MUC1"],
