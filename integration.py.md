@@ -14,6 +14,7 @@ The goal here is to remove batch effects—technical differences caused by diffe
   * **Moving the Spots**: It acts like a magnet, pulling the spots from different batches toward a shared center for that specific cluster.
   * **Iteration**: It repeats this until the batches are mixed together, but the biological clusters remain distinct.
 * **Key Strength**: It is incredibly fast and preserves the original "shape" of your data. It doesn't change the gene counts; it only changes the coordinates used for plotting and clustering.
+
 COGS 108: PCA what and how (https://github.com/COGS108/Lectures-Sp26/blob/main/16-Dimensionality-Reduction.pdf)
 
 ### scVI (more powerful)
