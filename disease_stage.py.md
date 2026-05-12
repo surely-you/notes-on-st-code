@@ -185,21 +185,24 @@ def extract_gene_programs(adata: ad.AnnData, n_programs: int = 10):
     return adata
 ```
 ## Top DEG Heatmap
-This creates a visual "Master Summary" of the atlas. It picks the top 15 most significant genes from every stage and plots them in a grid.
+create a single, comprehensive heatmap (specifically a matrixplot) that shows the most important gene markers for every stage of PDAC progression in one view. It picks the top 15 most significant genes from every stage and plots them in a grid.
+
 ```
 # ── 4. Top DEG heatmap across stages ─────────────────────────────────────────
 def plot_top_deg_heatmap(adata: ad.AnnData, de_results: dict, n_top: int = 15):
     top_genes = []
     for stage, df in de_results.items():
-        sig = df[df["pvals_adj"] < 0.05].nlargest(n_top, "scores")
-        top_genes.extend(sig["names"].tolist())
-    top_genes = list(dict.fromkeys(top_genes))   # deduplicate, preserve order
+        sig = df[df["pvals_adj"] < 0.05].nlargest(n_top, "scores")    # filters for genes that are statistically significant and picks the "top 15" genes with the highest scores
+        top_genes.extend(sig["names"].tolist())                       # collects all these genes into one master list.
+    top_genes = list(dict.fromkeys(top_genes))                        # deduplicate, preserve order
 
     avail = [g for g in top_genes if g in adata.var_names]
+    # Each row in the heatmap will be a Disease Stage, and each column will be a Gene.
     sc.pl.matrixplot(
-        adata, var_names=avail, groupby="disease_stage",
-        categories_order=STAGE_ORDER, standard_scale="var",
-        cmap="RdBu_r", save="_stage_deg_heatmap.png",
+        adata, var_names=avail,
+        groupby="disease_stage", categories_order=STAGE_ORDER,  # forces the heatmap to display from top-to-bottom as Normal → PanIN → IPMN → Primary → Metastasis
+        standard_scale="var",                                   # Z-scores everything (normaliza) to make relative gene expression comparable
+        cmap="RdBu_r", save="_stage_deg_heatmap.png",           # Red-Blue color scheme: Red = high expression, blue = low expression
     )
     print("  DEG heatmap saved.")
 ```
