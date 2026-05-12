@@ -3,7 +3,7 @@
 SC_REF_PATH  = "data/reference/pdac_scrna_reference.h5ad
 ```
 what's the reference?
-# Spatial Deconvolution with Cell2location
+# Annotations on script_deconvolution.py
 This workflow describes the process of cell-type deconvolution for Spatial Transcriptomics. Because a single Visium spot (55µm) usually contains multiple cells (typically 1–20), we cannot assume one spot equals one cell. This script uses Cell2location, a Bayesian model, to integrate single-cell RNA-seq (scRNA-seq) "signatures" into spatial data to estimate exactly which cell types are present in each spot.
 ## Background Info: Cell2location
 ### Model Logic: How Bayesian deconvolution works.
