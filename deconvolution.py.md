@@ -19,6 +19,8 @@ This workflow describes the process of cell-type deconvolution for Spatial Trans
   * Higher values (e.g., 200): The model is "strict." It assumes the gene detection is quite consistent. This is generally recommended for modern Visium datasets to prevent the model from over-fitting to noise.
 * **Gene Sensitivity**: "Some genes are captured more easily than others."
 
+COGS 108 ML & overfitting (https://github.com/COGS108/Lectures-Sp26/blob/main/17-Machine-Learning.pdf)
+
 ### Posterior Estimation
 The model runs hundreds of iterations (# of iterations = *EPOCHS_REF*). In each iteration, it tries to solve the puzzle:
 * Guess: It guesses the number of each cell type in a spot.
