@@ -14,6 +14,7 @@ Steps:
 * **numpy**: 
 * **os**: 
 * **matplotlib.pyplot**:
+
 COGS 108: How to panda 🐼 (https://github.com/COGS108/Lectures-Sp26/blob/main/05-Pandas.ipynb)
 ```
 import scanpy as sc
