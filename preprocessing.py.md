@@ -63,6 +63,9 @@ ensures that we only analyze spots containing high-quality biological informatio
 * Low Count Spots: Likely empty spots or technical failures.
 * Low Gene Diversity: Spots with very few unique genes detected.
 * Mitochondrial Overexpression: High % of MT-DNA often indicates cell stress or lysis, where the cytoplasmic mRNA has leaked out, leaving only mitochondrial transcripts.
+
+"Cells with a very low number of genes (<500) are considered of low quality and hence are removed from the analysis. Cells with high mitochondria read percentage (>10%) are also removed as high expression level of mitochondrial genes indicate damaged or dead cells."
+source: https://pmc.ncbi.nlm.nih.gov/articles/PMC10663991/
 ```
 MIN_COUNTS   = 500
 MIN_GENES    = 250
