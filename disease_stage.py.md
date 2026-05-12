@@ -125,10 +125,11 @@ def plot_tme_composition(adata: ad.AnnData):
 ## NMF Gene Programs
 Non-negative Matrix Factorization (NMF) to find "Gene Programs" (groups of genes that always work together), rather than looking at single genes.
 ### Non-negative Matrix Factorization (NMF)
-NMF is a "Parts-based Representation" algorithm. Imagine a spot is a "Sentence." NMF finds the "Words" (Gene Programs) that make up that sentence.
+**NMF:** technique used to break down large dataset into smaller meaningful parts while ensuring that all values remain non-negative. This helps in extracting useful features from data and making it easier to analyze and process it.
+* decomposes a data matrix A into two smaller matrices W and H using an iterative optimization process that minimizes reconstruction error
 * **Matrix H:** Tells you which genes belong to which program (e.g., Program 1 = Inflammatory Genes).
 * **Matrix W**: Tells you which spots are "using" that program.
-* **Why it's "Non-negative"**: In biology, you can't have "negative" expression. NMF enforces that all values must be $\geq 0$, which results in "additive" programs that are much easier for biologists to interpret than the abstract components found in PCA.
+* source: https://www.geeksforgeeks.org/machine-learning/non-negative-matrix-factorization/
 ```
 # ── 3. NMF gene programs ──────────────────────────────────────────────────────
 def extract_gene_programs(adata: ad.AnnData, n_programs: int = 10):
