@@ -7,13 +7,18 @@ Steps:
 4. Embedding & Clustering: Dimensionality reduction (PCA, UMAP) and neighborhood graphs.
 
 ## Setting up the environment & importing data
-* **scanpy**: 
-* **squidpy**: 
-* **anndata**: 
-* **pandas**: 
-* **numpy**: 
-* **os**: 
-* **matplotlib.pyplot**:
+Bioinformatics packages
+* **scanpy**: Comprehensive toolkit for single-cell RNA-seq analysis. Handles preprocessing, clustering, trajectory inference, and differential expression
+* **squidpy**: Extension for spatial omics. Integrates spatial coordinates with omics data; used for neighborhood analysis and image-based feature extraction
+* **anndata**: Specialized data structure (Annotated Data) designed for high-dimensional observations. Stores the primary expression matrix ($X$) alongside observation metadata ($obs$) and variable metadata ($var$)
+
+Mathy math 
+* **pandas**: High-performance library for tabular data manipulation (DataFrames). Primary tool for managing cell/gene metadata and CSV/TSV exports.
+* **numpy**: Fundamental package for scientific computing. Provides N-dimensional array objects and the mathematical functions required for large-scale matrix operations.
+
+misc/others
+* **os**: Interface for operating system interaction. Facilitates file path management, directory creation, and environment variable handling.
+* **matplotlib.pyplot**: make fancy fancy graphs. Provides the backend for Scanpy/Squidpy visualizations; used for fine-tuning figure aesthetics and multi-panel layouts.
 
 COGS 108: How to panda 🐼 (https://github.com/COGS108/Lectures-Sp26/blob/main/05-Pandas.ipynb)
 ```
