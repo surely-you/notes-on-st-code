@@ -1,10 +1,10 @@
 # Annotations on script_preprocessing.py
 
-Steps: 
-1. Environment Setup & Data Entry: Loading dependencies and mapping sample manifests.
-2. Quality Control (QC): Filtering low-quality spots and mitochondrial contamination.
-3. Normalization & Feature Selection: Scaling data and identifying highly variable genes.
-4. Embedding & Clustering: Dimensionality reduction (PCA, UMAP) and neighborhood graphs.
+Summary: 
+1. **Environment Setup & Data Entry**: Loading dependencies and mapping sample manifests.
+2. **Quality Control (QC)**: Filtering low-quality spots and mitochondrial contamination.
+3. **Normalization & Feature Selection**: Scaling data and identifying highly variable genes.
+4. **Embedding & Clustering**: Dimensionality reduction (PCA, UMAP) and neighborhood graphs.
 
 ## Setting up the environment & importing data
 Bioinformatics packages
@@ -67,9 +67,9 @@ def load_sample(sample_id: str, path: str, stage: str) -> ad.AnnData:
 ## QC thresholds
 ensures that we only analyze spots containing high-quality biological information. We look for three main red flags:
 
-* Low Count Spots: Likely empty spots or technical failures.
-* Low Gene Diversity: Spots with very few unique genes detected.
-* Mitochondrial Overexpression: High % of MT-DNA often indicates cell stress or lysis, where the cytoplasmic mRNA has leaked out, leaving only mitochondrial transcripts.
+* **Low Count Spots:** Likely empty spots or technical failures.
+* **Low Gene Diversity**: Spots with very few unique genes detected.
+* **Mitochondrial Overexpression:** High % of MT-DNA often indicates cell stress or lysis, where the cytoplasmic mRNA has leaked out, leaving only mitochondrial transcripts.
 
 "Cells with a very low number of genes (<500) are considered of low quality and hence are removed from the analysis. Cells with high mitochondria read percentage (>10%) are also removed as high expression level of mitochondrial genes indicate damaged or dead cells."
 source: https://pmc.ncbi.nlm.nih.gov/articles/PMC10663991/
@@ -109,16 +109,19 @@ def run_qc(adata: ad.AnnData) -> ad.AnnData:
 
 ### normalizing
 To compare gene expression across different spots, we must normalize the data to account for differences in capture efficiency.
-**normalize_total**: scale each spot to a fixed target sum ($10,000$ counts) and then apply a $log(1+x)$ transformation to compress the dynamic range of highly expressed genes
+**normalize_total**: scale each spot to a fixed target sum ($10,000$ counts) and then apply a $log(1+x)$ transformation (cues BILD 5 week 5 EC ahem ahem) to compress the dynamic range of highly expressed genes
 **Highly Variable Genes (HVGs)**: genes that vary significantly across the tissue and are most likely to define different cell types or tissue zones.
 
 ### clustering
 This final step projects the high-dimensional gene data into a lower-dimensional space to identify "clusters" (communities of spots with similar expression).
 * **PCA**: Reduces the 3,000 HVGs into 50 Principal Components.
   * COGS 108 slide bout PCA is linked under integration
-* **Neighborhood Graph**: Determines which spots are "similar" in the PCA space.
-* **UMAP**: A 2D visualization of the high-dimensional relationships.
-* **Spatial Neighbors**: Unlike traditional single-cell, we use squidpy to build a graph based on the physical $(x, y)$ coordinates of the spots on the slide.
+* **Neighborhood Graph**: A mathematical representation of cell-to-cell similarity based on gene expression.
+  * identifies the nearest neighbors for each cell in the latent space
+  * foundation for clustering (e.g., Leiden/Louvain) and UMAP generation.
+* **UMAP**(Uniform Manifold Approximation and Projection): A 2D visualization of the high-dimensional relationships.
+* **Spatial Neighbors**: use squidpy to build a graph based on the physical $(x, y)$ coordinates of the spots on the slide.
+  * Essential for identifying spatial patterns, such as cellular niches, tissue boundaries, or ligand-receptor interactions between neighboring cells.
 ```
 # ── Normalization & Embedding ─────────────────────────────────────────────────
 def normalize_and_embed(adata: ad.AnnData) -> ad.AnnData:
