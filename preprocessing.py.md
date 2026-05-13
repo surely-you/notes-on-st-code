@@ -115,6 +115,7 @@ To compare gene expression across different spots, we must normalize the data to
 ### clustering
 This final step projects the high-dimensional gene data into a lower-dimensional space to identify "clusters" (communities of spots with similar expression).
 * **PCA**: Reduces the 3,000 HVGs into 50 Principal Components.
+  * COGS 108 slide bout PCA is linked under integration
 * **Neighborhood Graph**: Determines which spots are "similar" in the PCA space.
 * **UMAP**: A 2D visualization of the high-dimensional relationships.
 * **Spatial Neighbors**: Unlike traditional single-cell, we use squidpy to build a graph based on the physical $(x, y)$ coordinates of the spots on the slide.
