@@ -1,3 +1,14 @@
+# Annotations on script_deconvolution.py
+combines Transcriptomic Similarity (Ligand-Receptor pairs) with Spatial Proximity (Co-occurrence) to see how different cell types communicate as cancer progresses.
+
+## Summary
+1. LIANA (Ligand-Receptor Analysis)
+2. Squidpy Spatial Co-occurrence
+3. Visualization & Comparison
+
+## Setting up
+new libraries weeeeee:
+* **liana**: run several different methods for Cell-Cell Communication (CCC) analysis simultaneously and provides a consensus score.
 ```
 """
 05_cell_cell_interactions.py
@@ -31,8 +42,21 @@ KEY_PAIRS = [                              # sender → receiver pairs of intere
     ("Macrophage",         "Ductal (malignant)"),
     ("Neural",             "Ductal (malignant)"),   # perineural invasion axis
 ]
+```
+## LIANA (Ligand-Receptor Analysis)
 
+Core Functions
+* **Method Aggregation**: implements multiple scoring functions (e.g., expression product, truncated mean, etc.) to ensure the results aren't biased by one specific algorithm's quirks.
+* **Resource Management:** provides access to a massive database of Ligand-Receptor (LR) pairs, including protein complexes (where a signal is made of multiple subunits).
+* **Ranking**: "aggregate rank" system. If multiple methods agree that an interaction is important, it gets a high rank.
 
+* **Purpose**: Identifies potential "conversations" between cells.
+* **Logic**: It looks for pairs where Cell A expresses a Ligand (signal) and Cell B expresses the matching Receptor.
+* **Result**: A table of sender $\rightarrow$ receiver pairs, ranked by how likely they are to be interacting.
+
+source: https://github.com/saezlab/liana
+
+```
 # ── 1. LIANA ligand-receptor analysis ────────────────────────────────────────
 def run_liana(adata: ad.AnnData, stage: str) -> pd.DataFrame:
     """Run LIANA consensus LR scoring for one disease stage subset."""
@@ -101,8 +125,14 @@ def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
     plt.tight_layout()
     plt.savefig(f"{FIGURE_DIR}/liana_dotplot_{stage}.png", dpi=150)
     plt.close()
-
-
+```
+## Squidpy Spatial Co-occurrence
+* **Purpose**: Validates if the cells "talking" via LIANA are actually standing near each other.
+* **Mechanism**:
+  *_sq.gr.spatial_neighbors_: Builds a physical graph of the tissue.
+  * _sq.gr.co_occurrence_: Calculates the probability of finding Cell Type B at certain distances from Cell Type A.
+* **Insight**: If LIANA says "Ductal cells talk to CAFs," but Co-occurrence shows they are never near each other, the interaction is likely false.
+```
 # ── 4. Squidpy spatial co-occurrence ─────────────────────────────────────────
 def run_spatial_cooccurrence(adata: ad.AnnData, stage: str):
     """
@@ -123,8 +153,14 @@ def run_spatial_cooccurrence(adata: ad.AnnData, stage: str):
     )
     plt.savefig(f"{FIGURE_DIR}/cooccurrence_{stage}.png", dpi=150)
     plt.close()
-
-
+```
+##vVisualization & Comparison
+* **Dot Plots** (_plot_lr_dotplot_): Summarizes the top interactions for a specific stage.
+  * **Dot Size**: Mean expression level of the pair.
+  * **Dot Color**: Significance ($-log_{10}$ of the rank).
+* **Heatmap** _(plot_interaction_heatmap_): Tracks how specific "conversations" change across the Stage Order (e.g., from Normal $\rightarrow$ PanIN $\rightarrow$ Metastasis).
+* **Logic**: This identifies "stage-specific" interactions—signals that only appear once the tumor becomes malignant.
+```
 # ── 5. Stage-transition interaction heatmap ───────────────────────────────────
 def plot_interaction_heatmap(liana_res: pd.DataFrame):
     """Heatmap of aggregate rank scores for key LR pairs across stages."""
@@ -152,8 +188,10 @@ def plot_interaction_heatmap(liana_res: pd.DataFrame):
     plt.tight_layout()
     plt.savefig(f"{FIGURE_DIR}/lr_stage_heatmap.png", dpi=150)
     plt.close()
-
-
+```
+## Main
+run everything
+```
 # ── Main ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("Loading atlas with programs...")
