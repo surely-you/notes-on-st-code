@@ -169,7 +169,7 @@ def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
 * **Mechanism**:
   *_sq.gr.spatial_neighbors_: Builds a physical graph of the tissue.
   * _sq.gr.co_occurrence_: Calculates the probability of finding Cell Type B at certain distances from Cell Type A.
-* **Insight**: If LIANA says "Ductal cells talk to CAFs," but Co-occurrence shows they are never near each other, the interaction is likely false.
+* If LIANA says "Ductal cells talk to CAFs," but Co-occurrence shows they are never near each other, the interaction is likely false.
 ```
 # ── 4. Squidpy spatial co-occurrence ─────────────────────────────────────────
 def run_spatial_cooccurrence(adata: ad.AnnData, stage: str):
