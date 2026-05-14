@@ -7,6 +7,10 @@ what's the reference?
 # Annotations on script_deconvolution.py
 This workflow describes the process of cell-type deconvolution for Spatial Transcriptomics. Because a single Visium spot (55µm) usually contains multiple cells (typically 1–20), we cannot assume one spot equals one cell. This script uses Cell2location, a Bayesian model, to integrate single-cell RNA-seq (scRNA-seq) "signatures" into spatial data to estimate exactly which cell types are present in each spot.
 
+## Summary 
+1. Reference Mapping
+2. Deconvonlution
+
 ## Background Info: Cell2location
 ### Model Logic: How Bayesian deconvolution works.
 "Bayesian" means the model uses prior beliefs to stay grounded in biological reality.Instead of just guessing any number, we give the model "Priors":
@@ -43,7 +47,7 @@ works in two distinct phases:
 4. Visualization: Interpreting cell abundance maps.
 
 ## Setting things up
-new libraries wooooo: 
+new libraries: 
 * **cell2location**: the stuff above
 * **filter_genes**: preprocessing step used to remove low-quality or uninformative genes from the dataset (used under section Reference Mapping)
 ```
