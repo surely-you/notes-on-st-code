@@ -181,7 +181,7 @@ def integrate_scvi(adata: ad.AnnData) -> ad.AnnData:
     sc.tl.leiden(adata, resolution=0.5)
     return adata
 ```
-## annotate clusters (consider SingleR?)
+## annotate clusters (consider SingleR or CellTypist or smth)
 ```
 # ── Cluster annotation helpers ────────────────────────────────────────────────
 MARKER_GENES = {
