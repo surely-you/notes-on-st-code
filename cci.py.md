@@ -2,12 +2,13 @@
 combines Transcriptomic Similarity (Ligand-Receptor pairs) with Spatial Proximity (Co-occurrence) to see how different cell types communicate as cancer progresses.
 
 ## Summary
-1. LIANA (Ligand-Receptor Analysis)
-2. Squidpy Spatial Co-occurrence
-3. Visualization & Comparison
+1. **⭐LIANA (Ligand-Receptor Analysis)** 
+2. filter & plot results
+3. **⭐Squidpy Spatial Co-occurrence**
+4. Visualization & Comparison
 
 ## Setting up
-new libraries weeeeee:
+new libraries:
 * **liana**: run several different methods for Cell-Cell Communication (CCC) analysis simultaneously and provides a consensus score.
 ```
 """
@@ -43,64 +44,93 @@ KEY_PAIRS = [                              # sender → receiver pairs of intere
     ("Neural",             "Ductal (malignant)"),   # perineural invasion axis
 ]
 ```
-## LIANA (Ligand-Receptor Analysis)
+## 1. LIANA (Ligand-Receptor Analysis)
 
 Core Functions
+* **Purpose**: Identifies potential "conversations" between cells.
+* **Logic**: It looks for pairs where Cell A expresses a Ligand (signal) and Cell B expresses the matching Receptor.
 * **Method Aggregation**: implements multiple scoring functions (e.g., expression product, truncated mean, etc.) to ensure the results aren't biased by one specific algorithm's quirks.
 * **Resource Management:** provides access to a massive database of Ligand-Receptor (LR) pairs, including protein complexes (where a signal is made of multiple subunits).
 * **Ranking**: "aggregate rank" system. If multiple methods agree that an interaction is important, it gets a high rank.
-
-* **Purpose**: Identifies potential "conversations" between cells.
-* **Logic**: It looks for pairs where Cell A expresses a Ligand (signal) and Cell B expresses the matching Receptor.
 * **Result**: A table of sender $\rightarrow$ receiver pairs, ranked by how likely they are to be interacting.
-
+<img width="2336" height="1334" alt="image" src="https://github.com/user-attachments/assets/98c9ac46-f92a-4d64-a3fb-a2dbd6e27c2d" />
 source: https://github.com/saezlab/liana
+
+-----
+
+$\downarrow$ helper function that runs LIANA for a single stage 
 
 ```
 # ── 1. LIANA ligand-receptor analysis ────────────────────────────────────────
 def run_liana(adata: ad.AnnData, stage: str) -> pd.DataFrame:
+
     """Run LIANA consensus LR scoring for one disease stage subset."""
+
+    # takes an AnnData object (the standard format for single-cell data) and slices it to include only the cells or spots that belong to a specific stage
     sub = adata[adata.obs["disease_stage"] == stage].copy()
+
+    # Statistical methods for ligand-receptor interactions require a minimum number of cells to be reliable. If the subset has fewer than 50 cells/spots, the function prints a warning and returns an empty table. This prevents the code from crashing or producing "noisy" results based on insufficient data.
     if sub.n_obs < 50:
         print(f"  {stage}: too few spots, skipping")
         return pd.DataFrame()
 
+    # Instead of relying on one method, LIANA runs several (like CellPhoneDB, NATMI, etc.) and calculates a consensus rank to makes the results more robust.
     liana.mt.rank_aggregate(
         sub,
-        groupby=CELL_TYPE_COL,
-        use_raw=True,
+        groupby=CELL_TYPE_COL,   # looks for interactions between the categories defined in your cell type column
+        use_raw=True,            # uses the raw gene expression counts
         verbose=False,
     )
+
+    # stores its output in the .uns (unstructured) dictionary of the AnnData object under the key "liana_res".
     res = sub.uns["liana_res"].copy()
+    # extracts that table and adds a new column called "stage"
     res["stage"] = stage
     return res
-
-
+```
+calls helper function in a for loop that runs LIANA for all stages 
+```
 def run_liana_all_stages(adata: ad.AnnData) -> pd.DataFrame:
+
+    # empty list to store the results from each individual stage as they are processed.
     all_res = []
+
+    # for loop that automagically does everything
     for stage in STAGE_ORDER:
         print(f"  Running LIANA for {stage}...")
         df = run_liana(adata, stage)
         all_res.append(df)
+
+    # takes that list of individual DataFrames and stacks them on top of each other into one giant master table.
     combined = pd.concat(all_res, ignore_index=True)
+
+    #writed output to csv
     combined.to_csv(f"{OUTPUT_DIR}/liana_all_stages.csv", index=False)
     return combined
-
-
+```
+## 2. filter and plot top relevant ones
+narrows down potential interactions to the most biologically relevant across all disease stages. (the filter step)
+* *aggregate_rank*: similar to p value 
+```
 # ── 2. Filter & rank interactions ─────────────────────────────────────────────
 def get_top_interactions(liana_res: pd.DataFrame, n_top: int = 20) -> pd.DataFrame:
     """Filter to significant interactions and rank by aggregate rank score."""
-    sig = liana_res[liana_res["aggregate_rank"] < 0.05].copy()
+    sig = liana_res[liana_res["aggregate_rank"] < 0.05].copy() #
+
+    # Since the data has multiple stages of cancer, an interaction might appear multiple times.
     ranked = (
         sig.groupby(["source", "target", "ligand_complex", "receptor_complex"])
-        .agg(mean_rank=("aggregate_rank", "mean"), n_stages=("stage", "nunique"))
-        .reset_index()
+        .agg(mean_rank=("aggregate_rank", "mean"), # Calculates the average strength of that interaction across all stages where it was significant.
+            n_stages=("stage", "nunique"))         # Counts how many different disease stages this specific interaction appeared in (its "persistence")
+        .reset_index()                             # sorts the results so that the interactions with the lowest mean rank (the strongest, most consistent ones) are at the top of the list
         .sort_values("mean_rank")
     )
+
     ranked.to_csv(f"{OUTPUT_DIR}/top_interactions_consensus.csv", index=False)
     return ranked.head(n_top)
-
-
+```
+(the plotting step)
+```
 # ── 3. Dot plot: top LR pairs per stage ──────────────────────────────────────
 def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
     sub = liana_res[liana_res["stage"] == stage].copy()
@@ -126,7 +156,7 @@ def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
     plt.savefig(f"{FIGURE_DIR}/liana_dotplot_{stage}.png", dpi=150)
     plt.close()
 ```
-## Squidpy Spatial Co-occurrence
+## 3. Squidpy Spatial Co-occurrence
 * **Purpose**: Validates if the cells "talking" via LIANA are actually standing near each other.
 * **Mechanism**:
   *_sq.gr.spatial_neighbors_: Builds a physical graph of the tissue.
