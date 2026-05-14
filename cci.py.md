@@ -130,6 +130,7 @@ def get_top_interactions(liana_res: pd.DataFrame, n_top: int = 20) -> pd.DataFra
     return ranked.head(n_top)
 ```
 (the plotting step)
+creates a Dot Plot. It helps visualize which cell types are communicating and how "strong" or "significant" those messages are for a specific disease stage.
 ```
 # ── 3. Dot plot: top LR pairs per stage ──────────────────────────────────────
 def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
@@ -137,6 +138,11 @@ def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
     if sub.empty:
         return
     sub = sub.sort_values("aggregate_rank").head(n_top)
+
+    # creates a long string for the X-axis labels that tells you everything:
+    # Who? (Source Cell → Target Cell)
+    # How? (Ligand — Receptor)
+    # Example: Ductal Cell → T-Cell \n CXCL12 — CXCR4
     sub["interaction"] = sub["source"] + " → " + sub["target"] + "\n" + \
                          sub["ligand_complex"] + " — " + sub["receptor_complex"]
 
@@ -144,10 +150,12 @@ def plot_lr_dotplot(liana_res: pd.DataFrame, stage: str, n_top: int = 15):
     scatter = ax.scatter(
         sub["interaction"],
         sub["cellphone_pvals"],
-        c=-np.log10(sub["aggregate_rank"] + 1e-10),
-        s=sub["lr_means"] * 30,
+        c=-np.log10(sub["aggregate_rank"] + 1e-10),        # Consensus Score: Darker reds indicate a higher ranking(log-transform) across all LIANA methods.
+        s=sub["lr_means"] * 30,                            # Interaction Magnitude: bigger dot means the ligand and receptor are expressed at higher levels.
         cmap="Reds", edgecolors="grey", linewidths=0.5,
     )
+
+    #graph labeling and outputting 
     plt.colorbar(scatter, ax=ax, label="-log10(aggregate rank)")
     ax.set_xticklabels(sub["interaction"], rotation=90, fontsize=7)
     ax.set_ylabel("CellPhoneDB p-value")
