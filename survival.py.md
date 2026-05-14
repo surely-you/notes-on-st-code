@@ -1,5 +1,19 @@
 # Annotations on script_survival.py
+take "gene programs" (discovered via spatial transcriptomics) and prove they have clinical relevance by showing they can predict how long a patient will live using large-scale patient databases (TCGA)
 
+## summary
+* Input: A list of gene programs (sets of genes that tend to work together).
+* Scoring: It calculates how "active" those programs are in hundreds of pancreatic cancer patients.
+* Testing: It checks if patients with "High" program activity die sooner than those with "Low" activity.
+* Verification: It repeats this across six different datasets (TCGA plus 5 GEO cohorts) to ensure the findings aren't a fluke.
+
+## set up enviroment and stuff
+new libraries/functions
+- **zscore**
+- **KaplanMeierFitter**
+- **CoxPHFitter**
+- **logrank_test**
+- **StandardScaler**
 ```
 """
 06_survival_validation.py
@@ -49,8 +63,10 @@ def load_programs(programs_csv: str) -> dict[str, list[str]]:
         genes  = [g.strip() for g in row["top_genes"].split(",")]
         programs[prog] = genes
     return programs
-
-
+```
+## Converts a list of genes into a single "activity score" for every patient.
+Genes have different natural scales. Z-scoring ensures a highly expressed gene doesn't "drown out" a lowly expressed gene in the same program. The final score is the mean Z-score of all genes in that program.
+```
 # ── 2. Score bulk RNA-seq samples with gene programs (mean z-score) ───────────
 def score_programs(expr: pd.DataFrame, programs: dict[str, list[str]]) -> pd.DataFrame:
     """
@@ -65,8 +81,15 @@ def score_programs(expr: pd.DataFrame, programs: dict[str, list[str]]) -> pd.Dat
             print(f"  Warning: {prog} has only {len(avail)} genes in bulk data")
         scores[prog] = expr_z.loc[avail].mean(axis=0)
     return pd.DataFrame(scores)
-
-
+```
+## Probability: Visualizes survival over time.
+splits patients into two groups (High vs. Low) based on the median program score.
+* The Math: It uses the Kaplan-Meier Estimator to calculate the probability of surviving at time $t$:
+* $$S(t) = \prod_{t_i \le t} \left(1 - \frac{d_i}{n_i}\right)$$
+  * $d_i$: Number of deaths at time $t$.
+  * $n_i$: Number of people still alive (at risk) just before time $t$.
+* Log-rank Test: It produces a $p$-value to determine if the difference between the red (High) and blue (Low) curves is statistically significant.
+```
 # ── 3. Kaplan-Meier analysis ──────────────────────────────────────────────────
 def kaplan_meier(clin: pd.DataFrame, prog_scores: pd.DataFrame,
                  program: str, cohort_name: str):
@@ -100,8 +123,14 @@ def kaplan_meier(clin: pd.DataFrame, prog_scores: pd.DataFrame,
     return {"cohort": cohort_name, "program": program,
             "logrank_p": res.p_value, "median_high": df.loc[df["group"]=="High", SURV_TIME_COL].median(),
             "median_low": df.loc[df["group"]=="Low", SURV_TIME_COL].median()}
-
-
+```
+Cox Proportional Hazards Model:
+* $$h(t|X) = h_0(t) \exp(\sum_{i=1}^{n} \beta_i X_i)$$
+  * $h(t|X)$ is the risk (hazard).
+  * $\beta_i$ is the Coefficient.
+  * If $\beta$ is positive, higher expression = higher risk of death.
+* uses **StandardScaler** to ensure coefficients are comparable, allowing you to say "a 1-standard-deviation increase in program score increases risk by $X\%$."
+```
 # ── 4. Multivariate Cox PH ────────────────────────────────────────────────────
 def cox_multivariate(clin: pd.DataFrame, prog_scores: pd.DataFrame,
                      program: str, covariates: list[str], cohort_name: str):
@@ -125,8 +154,8 @@ def cox_multivariate(clin: pd.DataFrame, prog_scores: pd.DataFrame,
     plt.savefig(f"{FIGURE_DIR}/Cox_{cohort_name}_{program}.png", dpi=150)
     plt.close()
     return cph.summary
-
-
+```
+```
 # ── 5. Forest plot across validation cohorts ──────────────────────────────────
 def forest_plot(cox_summaries: dict[str, pd.DataFrame], program: str):
     """
