@@ -2,6 +2,11 @@
 merges all samples 
 **goal**: remove batch effects—technical differences caused by different patients, labs, or sequencing runs—so that biological differences (like Normal vs. Cancer) can be studied clearly.
 
+## summary
+1. Data Concatenation
+2. Sanity Check and Reset
+3. **⭐Merging**
+4. **⭐annotate**
 
 ## Load libraries and set up environment 
 ### Harmony (Faster)
