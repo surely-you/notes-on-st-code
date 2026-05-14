@@ -1,5 +1,10 @@
 # Annotations on script.diease_stage.py
-Now that the data is cleaned, deconvolved, and integrated, this script asks the biological questions: What genes change as the cancer progresses? and How does the neighborhood of cells evolve from a normal pancreas to a metastasis?
+Look at genes change as the cancer progresses and how does the neighborhood of cells evolve from a normal pancreas to a metastasis?
+## Summary 
+1. Per-Stage Differential Expression
+2. TME Composition Across Stages
+3. NMF Gene Programs
+4. Top DEG Heatmap
 ## Load libraries and set up environment 
 ```
 """
@@ -43,7 +48,7 @@ CELL_TYPES_OF_INTEREST = [
 ## Per-Stage Differential Expression
 This function identifies "Stage-Specific Markers." It compares every spot in one stage (e.g., PanIN) against all other spots in the atlas to find genes that are uniquely "turned on" during that phase of the disease.
 * **Differentially Expressed Genes (DEGs)**: genes whose expression levels are significantly upregulated or downregulated between conditions or groups
-### Algorithm: Wilcoxon Rank-Sum Test (aka Mann–Whitney U test)
+### Algorithm: Wilcoxon Rank-Sum Test (aka ⭐Mann–Whitney U test⭐)
 statistical method for comparing two independent groups when your data doesn’t follow a normal (bell-shaped) distribution. 
 * non-parametric version of the two-sample t-test
 * it works by ranking all observations from both groups together and then checking whether one group’s ranks tend to be higher than the other’s
