@@ -17,16 +17,9 @@ import matplotlib.pyplot as plt
 # ── Config ───────────────────────────────────────────────────────────────────
 SAMPLE_MANIFEST = {
     # accession : (path, disease_stage)
-    "GSE254829"  : ("data/raw/GSE254829",  "PanIN"),
-    "GSE233293"  : ("data/raw/GSE233293",  "IPMN"),
-    "GSE327056"  : ("data/raw/GSE327056",  "Normal_PDAC"),
-    "GSE274103"  : ("data/raw/GSE274103",  "Primary_PDAC"),
-    "GSE310353"  : ("data/raw/GSE310353",  "Primary_PDAC"),
-    "Syn61831984": ("data/raw/Syn61831984","Primary_PDAC"),
-    "GSE278694"  : ("data/raw/GSE278694",  "Primary_PDAC"),
-    "GSE272362"  : ("data/raw/GSE272362",  "Metastasis"),
-    "GSE274557"  : ("data/raw/GSE274557",  "Metastasis"),
-    "10x_VisiumHD": ("data/raw/10x_VisiumHD", "Primary_PDAC"),
+    "GSM7421790"  : ("GSM7421790",  "IPMN"),
+    "GSM8443449"  : ("GSM8443449",  "Primary_PDAC"),
+    "GSM8452857"  : ("GSM8452857",  "Metastasis"),
 }
 OUTPUT_DIR   = "data/processed"
 FIGURE_DIR   = "figures/qc"
@@ -97,7 +90,6 @@ def normalize_and_embed(adata: ad.AnnData) -> ad.AnnData:
     sc.tl.leiden(adata, resolution=0.5)
 
     # Spatial neighborhood graph (for downstream squidpy analyses)
-    sq.gr.spatial_neighbors(adata, coord_type="visium")
     return adata
 
 
@@ -115,3 +107,7 @@ if __name__ == "__main__":
         adatas.append(adata)
 
     print(f"\nDone. {len(adatas)} samples processed.")
+
+    # grid: For data where spots are in a regular, repeating pattern (like Visium's hexagonal grid).
+    # generic: For data with irregular coordinates (like single-cell spatial data where cells are scattered randomly).
+    sq.gr.spatial_neighbors(adata, coord_type="grid")
